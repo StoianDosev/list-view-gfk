@@ -248,7 +248,7 @@ export default Ember.Mixin.create({
       startingIndex: startingIndex,
       endingIndex: min(max(contentLength - 1, 0), startingIndex + this._numChildViewsForViewport())
     }, function () {
-      this.scrollTop = scrollTop;
+      this.set('scrollTop', scrollTop);
 
       maxContentIndex = max(contentLength - 1, 0);
 
