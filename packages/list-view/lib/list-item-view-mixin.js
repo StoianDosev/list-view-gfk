@@ -1,6 +1,3 @@
-// jshint validthis: true
-
-var get = Ember.get;
 
 function samePosition(a, b) {
   return a && b && a.x === b.x && a.y === b.y;
@@ -10,10 +7,10 @@ function positionElement() {
   var element, position, _position;
 
   Ember.instrument('view.updateContext.positionElement', this, function() {
-    element = get(this, 'element');
+    element = this.element;
     position = this.position;
     _position = this._position;
-
+    
     if (!position || !element) {
       return;
     }
@@ -29,14 +26,11 @@ function positionElement() {
   }, this);
 }
 
-export var TransformMixin = Ember.Mixin.create({
-  style: '',
-  attributeBindings: ['style']
-});
-
-export default Ember.Mixin.create(TransformMixin, {
-  _position: null,
+export default Ember.Mixin.create({
   classNames: ['ember-list-item-view'],
+  style: '',
+  attributeBindings: ['style'],
+  _position: null,
   _positionElement: positionElement,
 
   positionElementWhenInserted: Ember.on('init', function(){

@@ -118,10 +118,59 @@ var define, requireModule, require, requirejs;
 })();
 
 define("list-view/helper",
-  ["exports"],
-  function(__exports__) {
+  ["./list-view","./virtual-list-view","exports"],
+  function(__dependency1__, __dependency2__, __exports__) {
     "use strict";
-    __exports__["default"] = function emberList(options) {
+    var EmberListView = __dependency1__["default"];
+
+    var EmberVirtualListView = __dependency2__["default"];
+
+    
+    var EmberVirtualList = createHelper(EmberVirtualListView);
+    __exports__.EmberVirtualList = EmberVirtualList;
+    var EmberList = createHelper(EmberListView);
+    __exports__.EmberList = EmberList;
+    
+    function registerListViewHelpers() {
+      var registerHelper;
+      if (Ember.HTMLBars) {
+        // registerHelper was used for some 1.10-beta's and _registerHelper is for 1.10.0 final.
+        registerHelper = Ember.HTMLBars._registerHelper || Ember.HTMLBars.registerHelper;
+      } else {
+        registerHelper = Ember.Handlebars.registerHelper;
+      }
+      registerHelper('ember-list', EmberList);
+      registerHelper('ember-virtual-list', EmberVirtualList);
+    }
+    __exports__.registerListViewHelpers = registerListViewHelpers;
+    function createHelper(view) {
+      if (Ember.HTMLBars) {
+        return {
+          isHelper: true,
+          isHTMLBars: true,
+          helperFunction: function listViewHTMLBarsHelper(params, hash, options, env) {
+            hash.content = hash.items;
+            delete hash.items;
+    
+            for (var prop in hash) {
+              if (/-/.test(prop)) {
+                var camelized = Ember.String.camelize(prop);
+                hash[camelized] = hash[prop];
+                delete hash[prop];
+              }
+            }
+    
+            /*jshint validthis:true */
+            return env.helpers.collection.helperFunction.call(this, [view], hash, options, env);
+          }
+        };
+      }
+      return function handlebarsHelperFactory(options) {
+        return createHandlebarsHelper.call(this, view, options);
+      };
+    }
+    
+    function createHandlebarsHelper(view, options) {
       var hash = options.hash;
       var types = options.hashTypes;
     
@@ -132,8 +181,8 @@ define("list-view/helper",
       delete types.items;
     
       if (!hash.content) {
-        hash.content = "this";
-        types.content = "ID";
+        hash.content = 'this';
+        types.content = 'ID';
       }
     
       for (var prop in hash) {
@@ -146,15 +195,63 @@ define("list-view/helper",
         }
       }
     
-      return Ember.Handlebars.helpers.collection.call(this, 'Ember.ListView', options);
-    };
+      /*jshint validthis:true */
+      return Ember.Handlebars.helpers.collection.call(this, view, options);
+    }
   });
-define("list-view/list_item_view",
-  ["list-view/list_item_view_mixin","exports"],
+define("list-view/list-item-view-mixin",
+  ["exports"],
+  function(__exports__) {
+    "use strict";
+    
+    function samePosition(a, b) {
+      return a && b && a.x === b.x && a.y === b.y;
+    }
+    
+    function positionElement() {
+      var element, position, _position;
+    
+      Ember.instrument('view.updateContext.positionElement', this, function() {
+        element = this.element;
+        position = this.position;
+        _position = this._position;
+        
+        if (!position || !element) {
+          return;
+        }
+    
+        // // TODO: avoid needing this by avoiding unnecessary
+        // // calls to this method in the first place
+        if (samePosition(position, _position)) {
+          return;
+        }
+    
+        Ember.run.schedule('render', this, this._parentView.applyTransform, this, position.x, position.y);
+        this._position = position;
+      }, this);
+    }
+    
+    __exports__["default"] = Ember.Mixin.create({
+      classNames: ['ember-list-item-view'],
+      style: '',
+      attributeBindings: ['style'],
+      _position: null,
+      _positionElement: positionElement,
+    
+      positionElementWhenInserted: Ember.on('init', function(){
+        this.one('didInsertElement', positionElement);
+      }),
+    
+      updatePosition: function(position) {
+        this.position = position;
+        this._positionElement();
+      }
+    });
+  });
+define("list-view/list-item-view",
+  ["./list-item-view-mixin","exports"],
   function(__dependency1__, __exports__) {
     "use strict";
-    // jshint validthis: true
-    
     var ListItemViewMixin = __dependency1__["default"];
 
     
@@ -213,242 +310,11 @@ define("list-view/list_item_view",
       }, 'context', 'controller')
     });
   });
-define("list-view/list_item_view_mixin",
+define("list-view/list-view-helper",
   ["exports"],
   function(__exports__) {
     "use strict";
-    // jshint validthis: true
     
-    var get = Ember.get;
-    
-    function samePosition(a, b) {
-      return a && b && a.x === b.x && a.y === b.y;
-    }
-    
-    function positionElement() {
-      var element, position, _position;
-    
-      Ember.instrument('view.updateContext.positionElement', this, function() {
-        element = get(this, 'element');
-        position = this.position;
-        _position = this._position;
-    
-        if (!position || !element) {
-          return;
-        }
-    
-        // // TODO: avoid needing this by avoiding unnecessary
-        // // calls to this method in the first place
-        if (samePosition(position, _position)) {
-          return;
-        }
-    
-        Ember.run.schedule('render', this, this._parentView.applyTransform, this, position.x, position.y);
-        this._position = position;
-      }, this);
-    }
-    
-    var TransformMixin = Ember.Mixin.create({
-      style: '',
-      attributeBindings: ['style']
-    });
-    __exports__.TransformMixin = TransformMixin;
-    
-    __exports__["default"] = Ember.Mixin.create(TransformMixin, {
-      _position: null,
-      classNames: ['ember-list-item-view'],
-      _positionElement: positionElement,
-    
-      positionElementWhenInserted: Ember.on('init', function(){
-        this.one('didInsertElement', positionElement);
-      }),
-    
-      updatePosition: function(position) {
-        this.position = position;
-        this._positionElement();
-      }
-    });
-  });
-define("list-view/list_view",
-  ["list-view/list_view_helper","list-view/list_view_mixin","exports"],
-  function(__dependency1__, __dependency2__, __exports__) {
-    "use strict";
-    var ListViewHelper = __dependency1__["default"];
-
-    var ListViewMixin = __dependency2__["default"];
-
-    
-    var get = Ember.get, set = Ember.set;
-    
-    /**
-      The `Ember.ListView` view class renders a
-      [div](https://developer.mozilla.org/en/HTML/Element/div) HTML element,
-      with `ember-list-view` class.
-    
-      The context of each item element within the `Ember.ListView` are populated
-      from the objects in the `Element.ListView`'s `content` property.
-    
-      ### `content` as an Array of Objects
-    
-      The simplest version of an `Ember.ListView` takes an array of object as its
-      `content` property. The object will be used as the `context` each item element
-      inside the rendered `div`.
-    
-      Example:
-    
-      ```javascript
-      App.ContributorsRoute = Ember.Route.extend({
-        model: function() {
-          return [{ name: 'Stefan Penner' }, { name: 'Alex Navasardyan' }, { name: 'Ray Cohen'}];
-        }
-      });
-      ```
-    
-      ```handlebars
-      {{#ember-list items=contributors height=500 rowHeight=50}}
-        {{name}}
-      {{/ember-list}}
-      ```
-    
-      Would result in the following HTML:
-    
-      ```html
-       <div id="ember181" class="ember-view ember-list-view" style="height:500px;width:500px;position:relative;overflow:scroll;-webkit-overflow-scrolling:touch;overflow-scrolling:touch;">
-        <div class="ember-list-container">
-          <div id="ember186" class="ember-view ember-list-item-view" style="-webkit-transform: translate3d(0px, 0px, 0);">
-            <script id="metamorph-0-start" type="text/x-placeholder"></script>Stefan Penner<script id="metamorph-0-end" type="text/x-placeholder"></script>
-          </div>
-          <div id="ember187" class="ember-view ember-list-item-view" style="-webkit-transform: translate3d(0px, 50px, 0);">
-            <script id="metamorph-1-start" type="text/x-placeholder"></script>Alex Navasardyan<script id="metamorph-1-end" type="text/x-placeholder"></script>
-          </div>
-          <div id="ember188" class="ember-view ember-list-item-view" style="-webkit-transform: translate3d(0px, 100px, 0);">
-            <script id="metamorph-2-start" type="text/x-placeholder"></script>Rey Cohen<script id="metamorph-2-end" type="text/x-placeholder"></script>
-          </div>
-          <div id="ember189" class="ember-view ember-list-scrolling-view" style="height: 150px"></div>
-        </div>
-      </div>
-      ```
-    
-      By default `Ember.ListView` provides support for `height`,
-      `rowHeight`, `width`, `elementWidth`, `scrollTop` parameters.
-    
-      Note, that `height` and `rowHeight` are required parameters.
-    
-      ```handlebars
-      {{#ember-list items=this height=500 rowHeight=50}}
-        {{name}}
-      {{/ember-list}}
-      ```
-    
-      If you would like to have multiple columns in your view layout, you can
-      set `width` and `elementWidth` parameters respectively.
-    
-      ```handlebars
-      {{#ember-list items=this height=500 rowHeight=50 width=500 elementWidth=80}}
-        {{name}}
-      {{/ember-list}}
-      ```
-    
-      ### extending `Ember.ListView`
-    
-      Example:
-    
-      ```handlebars
-      {{view App.ListView contentBinding="content"}}
-    
-      <script type="text/x-handlebars" data-template-name="row_item">
-        {{name}}
-      </script>
-      ```
-    
-      ```javascript
-      App.ListView = Ember.ListView.extend({
-        height: 500,
-        width: 500,
-        elementWidth: 80,
-        rowHeight: 20,
-        itemViewClass: Ember.ListItemView.extend({templateName: "row_item"})
-      });
-      ```
-    
-      @extends Ember.ContainerView
-      @class ListView
-      @namespace Ember
-    */
-    __exports__["default"] = Ember.ContainerView.extend(ListViewMixin, {
-      css: {
-        position: 'relative',
-        overflow: 'auto',
-        '-webkit-overflow-scrolling': 'touch',
-        'overflow-scrolling': 'touch'
-      },
-    
-      applyTransform: ListViewHelper.applyTransform,
-    
-      _scrollTo: function(scrollTop) {
-        var element = get(this, 'element');
-    
-        if (element) { element.scrollTop = scrollTop; }
-      },
-    
-      didInsertElement: function() {
-        var that = this;
-        var element = get(this, 'element');
-    
-        this._updateScrollableHeight();
-    
-        this._scroll = function(e) { that.scroll(e); };
-    
-        Ember.$(element).on('scroll', this._scroll);
-      },
-    
-      willDestroyElement: function() {
-        var element;
-    
-        element = get(this, 'element');
-    
-        Ember.$(element).off('scroll', this._scroll);
-      },
-    
-      scroll: function(e) {
-        this.scrollTo(e.target.scrollTop);
-      },
-    
-      scrollTo: function(y){
-        var element = get(this, 'element');
-        this._scrollTo(y);
-        this._scrollContentTo(y);
-      },
-    
-      totalHeightDidChange: Ember.observer(function () {
-        Ember.run.scheduleOnce('afterRender', this, this._updateScrollableHeight);
-      }, 'totalHeight'),
-    
-      _updateScrollableHeight: function () {
-        var height, state;
-    
-        // Support old and new Ember versions
-        state = this._state || this.state;
-    
-        if (state === 'inDOM') {
-          // if the list is currently displaying the emptyView, remove the height
-          if (this._isChildEmptyView()) {
-              height = '';
-          } else {
-              height = get(this, 'totalHeight');
-          }
-    
-          this.$('.ember-list-container').css({
-            height: height
-          });
-        }
-      }
-    });
-  });
-define("list-view/list_view_helper",
-  ["exports"],
-  function(__exports__) {
-    "use strict";
     // TODO - remove this!
     var el    = document.body || document.createElement('div');
     var style = el.style;
@@ -542,20 +408,22 @@ define("list-view/list_view_helper",
       })()
     };
   });
-define("list-view/list_view_mixin",
-  ["list-view/reusable_list_item_view","exports"],
+define("list-view/list-view-mixin",
+  ["./reusable-list-item-view","exports"],
   function(__dependency1__, __exports__) {
     "use strict";
-    // jshint validthis: true
-    
+    // TODO: remove unused: false
+    /* jshint unused: false*/
     var ReusableListItemView = __dependency1__["default"];
 
     
-    var get = Ember.get, set = Ember.set,
-    
-    min = Math.min, max = Math.max, floor = Math.floor,
-    ceil = Math.ceil,
-    forEach = Ember.ArrayPolyfills.forEach;
+    var get     = Ember.get;
+    var set     = Ember.set;
+    var min     = Math.min;
+    var max     = Math.max;
+    var floor   = Math.floor;
+    var ceil    = Math.ceil;
+    var forEach = Ember.ArrayPolyfills.forEach;
     
     function addContentArrayObserver() {
       var content = get(this, 'content');
@@ -575,12 +443,6 @@ define("list-view/list_view_mixin",
     
     function sortByContentIndex (viewOne, viewTwo) {
       return get(viewOne, 'contentIndex') - get(viewTwo, 'contentIndex');
-    }
-    
-    function notifyMutationListeners() {
-      if (Ember.View.notifyMutationListeners) {
-        Ember.run.once(Ember.View, 'notifyMutationListeners');
-      }
     }
     
     function removeEmptyView() {
@@ -615,11 +477,11 @@ define("list-view/list_view_mixin",
     }
     
     function enableProfilingOutput() {
-      function before(name, time, payload) {
+      function before(name, time/*, payload*/) {
         console.time(name);
       }
     
-      function after (name, time, payload) {
+      function after (name, time/*, payload*/) {
         console.timeEnd(name);
       }
     
@@ -687,21 +549,26 @@ define("list-view/list_view_mixin",
         @method render
         @param {Ember.RenderBuffer} buffer The render buffer
       */
-      render: function(buffer) {
-        buffer.push('<div class="ember-list-container"></div>');
-        this._super(buffer);
+      render: function (buffer) {
+        var element          = buffer.element();
+        var dom              = buffer.dom;
+        var container        = dom.createElement('div');
+        container.className  = 'ember-list-container';
+        element.appendChild(container);
+    
+        this._childViewsMorph = dom.createMorph(container, container, null);
+    
+        return container;
       },
     
       createChildViewsMorph: function (element) {
-        var children = element.children;
-        element = children[0];
-        this._childViewsMorph = this._renderer._dom.createMorph(element, children[children.length - 1], null);
+        this._childViewsMorph = this._renderer._dom.createMorph(element.lastChild, element.lastChild, null);
         return element;
       },
     
       willInsertElement: function() {
-        if (!this.get("height") || !this.get("rowHeight")) {
-          throw new Error("A ListView must be created with a height and a rowHeight.");
+        if (!this.get('height') || !this.get('rowHeight')) {
+          throw new Error('A ListView must be created with a height and a rowHeight.');
         }
         this._super();
       },
@@ -878,6 +745,10 @@ define("list-view/list_view_mixin",
         childView.prepareForReuse();
       },
     
+      createChildView: function (_view) {
+        return this._super(_view, this._itemViewProps || {});
+      },
+    
       /**
         @private
         @method _reuseChildForContentIndex
@@ -890,16 +761,14 @@ define("list-view/list_view_mixin",
         if (childView.constructor !== contentViewClass) {
           // rather then associative arrays, lets move childView + contentEntry maping to a Map
           var i = this._childViews.indexOf(childView);
-    
           childView.destroy();
           childView = this.createChildView(contentViewClass);
-    
           this.insertAt(i, childView);
         }
     
-        content = get(this, 'content');
+        content         = get(this, 'content');
         enableProfiling = get(this, 'enableProfiling');
-        position = this.positionForIndex(contentIndex);
+        position        = this.positionForIndex(contentIndex);
         childView.updatePosition(position);
     
         set(childView, 'contentIndex', contentIndex);
@@ -1026,7 +895,7 @@ define("list-view/list_view_mixin",
         currentScrollTop = this.scrollTop;
         newColumnCount = get(this, 'columnCount');
         maxScrollTop = get(this, 'maxScrollTop');
-        element = get(this, 'element');
+        element = this.element;
     
         this._lastColumnCount = newColumnCount;
     
@@ -1186,9 +1055,7 @@ define("list-view/list_view_mixin",
         @event contentWillChange
       */
       contentWillChange: Ember.beforeObserver(function() {
-        var content;
-    
-        content = get(this, 'content');
+        var content = get(this, 'content');
     
         if (content) {
           content.removeArrayObserver(this);
@@ -1219,12 +1086,11 @@ define("list-view/list_view_mixin",
         @param {Number} contentIndex item index in the content array
         @method _addItemView
       */
-      _addItemView: function(contentIndex){
+      _addItemView: function (contentIndex) {
         var itemViewClass, childView;
     
         itemViewClass = this.itemViewForIndex(contentIndex);
         childView = this.createChildView(itemViewClass);
-    
         this.pushObject(childView);
       },
     
@@ -1263,13 +1129,13 @@ define("list-view/list_view_mixin",
     
         @method _syncChildViews
        **/
-      _syncChildViews: function(){
+      _syncChildViews: function () {
         var childViews, childViewCount,
             numberOfChildViews, numberOfChildViewsNeeded,
             contentIndex, startingIndex, endingIndex,
             contentLength, emptyView, count, delta;
     
-        if (get(this, 'isDestroyed') || get(this, 'isDestroying')) {
+        if (this.isDestroyed || this.isDestroying) {
           return;
         }
     
@@ -1349,18 +1215,18 @@ define("list-view/list_view_mixin",
             contentIndex, visibleEndingIndex, maxContentIndex,
             contentIndexEnd, scrollTop;
     
-        scrollTop = this.scrollTop;
-        contentLength = get(this, 'content.length');
-        maxContentIndex = max(contentLength - 1, 0);
-        childViews = this.getReusableChildViews();
-        childViewsLength =  childViews.length;
+        scrollTop          = this.scrollTop;
+        contentLength      = get(this, 'content.length');
+        maxContentIndex    = max(contentLength - 1, 0);
+        childViews         = this.getReusableChildViews();
+        childViewsLength   =  childViews.length;
     
-        startingIndex = this._startingIndex();
+        startingIndex      = this._startingIndex();
         visibleEndingIndex = startingIndex + this._numChildViewsForViewport();
     
-        endingIndex = min(maxContentIndex, visibleEndingIndex);
+        endingIndex        = min(maxContentIndex, visibleEndingIndex);
     
-        contentIndexEnd = min(visibleEndingIndex, startingIndex + childViewsLength);
+        contentIndexEnd    = min(visibleEndingIndex, startingIndex + childViewsLength);
     
         for (contentIndex = startingIndex; contentIndex < contentIndexEnd; contentIndex++) {
           childView = childViews[contentIndex % childViewsLength];
@@ -1395,7 +1261,7 @@ define("list-view/list_view_mixin",
         var index, contentIndex, state;
     
         if (this._isChildEmptyView()) {
-            removeEmptyView.call(this);
+          removeEmptyView.call(this);
         }
     
         // Support old and new Ember versions
@@ -1435,8 +1301,181 @@ define("list-view/list_view_mixin",
       }
     });
   });
+define("list-view/list-view",
+  ["./list-view-helper","./list-view-mixin","exports"],
+  function(__dependency1__, __dependency2__, __exports__) {
+    "use strict";
+    var ListViewHelper = __dependency1__["default"];
+
+    var ListViewMixin = __dependency2__["default"];
+
+    
+    var get = Ember.get;
+    
+    /**
+      The `Ember.ListView` view class renders a
+      [div](https://developer.mozilla.org/en/HTML/Element/div) HTML element,
+      with `ember-list-view` class.
+    
+      The context of each item element within the `Ember.ListView` are populated
+      from the objects in the `ListView`'s `content` property.
+    
+      ### `content` as an Array of Objects
+    
+      The simplest version of an `Ember.ListView` takes an array of object as its
+      `content` property. The object will be used as the `context` each item element
+      inside the rendered `div`.
+    
+      Example:
+    
+      ```javascript
+      App.ContributorsRoute = Ember.Route.extend({
+        model: function () {
+          return [
+            { name: 'Stefan Penner' },
+            { name: 'Alex Navasardyan' },
+            { name: 'Ray Cohen'}
+          ];
+        }
+      });
+      ```
+    
+      ```handlebars
+      {{#ember-list items=contributors height=500 rowHeight=50}}
+        {{name}}
+      {{/ember-list}}
+      ```
+    
+      Would result in the following HTML:
+    
+      ```html
+       <div id="ember181" class="ember-view ember-list-view" style="height:500px;width:500px;position:relative;overflow:scroll;-webkit-overflow-scrolling:touch;overflow-scrolling:touch;">
+        <div class="ember-list-container">
+          <div id="ember186" class="ember-view ember-list-item-view" style="transform: translate(0px, 0px)">
+            Stefan Penner
+          </div>
+          <div id="ember187" class="ember-view ember-list-item-view" style="transform: translate(0px, 50px">
+            Alex Navasardyan
+          </div>
+          <div id="ember188" class="ember-view ember-list-item-view" style="transform: translate(0px, 100px)">
+            Ray Cohen
+          </div>
+        </div>
+      </div>
+      ```
+    
+      By default `Ember.ListView` provides support for `height`,
+      `rowHeight`, `width`, `elementWidth`, `scrollTop` parameters.
+    
+      Note, that `height` and `rowHeight` are required parameters.
+    
+      ```handlebars
+      {{#ember-list items=this height=500 rowHeight=50}}
+        {{name}}
+      {{/ember-list}}
+      ```
+    
+      If you would like to have multiple columns in your view layout, you can
+      set `width` and `elementWidth` parameters respectively.
+    
+      ```handlebars
+      {{#ember-list items=this height=500 rowHeight=50 width=500 elementWidth=80}}
+        {{name}}
+      {{/ember-list}}
+      ```
+    
+      ### Extending `Ember.ListView`
+    
+      Example:
+    
+      ```handlebars
+      {{view 'list-view' content=content}}
+    
+      <script type="text/x-handlebars" data-template-name="row_item">
+        {{name}}
+      </script>
+      ```
+    
+      ```javascript
+      App.ListView = Ember.ListView.extend({
+        height: 500,
+        width: 500,
+        elementWidth: 80,
+        rowHeight: 20,
+        itemViewClass: Ember.ListItemView.extend({templateName: "row_item"})
+      });
+      ```
+    
+      @extends Ember.ContainerView
+      @class ListView
+      @namespace Ember
+    */
+    __exports__["default"] = Ember.ContainerView.extend(ListViewMixin, {
+      css: {
+        position: 'relative',
+        overflow: 'auto',
+        '-webkit-overflow-scrolling': 'touch',
+        'overflow-scrolling': 'touch'
+      },
+    
+      applyTransform: ListViewHelper.applyTransform,
+    
+      _scrollTo: function(scrollTop) {
+        var element = this.element;
+    
+        if (element) { element.scrollTop = scrollTop; }
+      },
+    
+      didInsertElement: function() {
+        var that = this;
+    
+        this._updateScrollableHeight();
+    
+        this._scroll = function(e) { that.scroll(e); };
+    
+        Ember.$(this.element).on('scroll', this._scroll);
+      },
+    
+      willDestroyElement: function() {
+        Ember.$(this.element).off('scroll', this._scroll);
+      },
+    
+      scroll: function(e) {
+        this.scrollTo(e.target.scrollTop);
+      },
+    
+      scrollTo: function(y) {
+        this._scrollTo(y);
+        this._scrollContentTo(y);
+      },
+    
+      totalHeightDidChange: Ember.observer(function () {
+        Ember.run.scheduleOnce('afterRender', this, this._updateScrollableHeight);
+      }, 'totalHeight'),
+    
+      _updateScrollableHeight: function () {
+        var height, state;
+    
+        // Support old and new Ember versions
+        state = this._state || this.state;
+    
+        if (state === 'inDOM') {
+          // if the list is currently displaying the emptyView, remove the height
+          if (this._isChildEmptyView()) {
+              height = '';
+          } else {
+              height = get(this, 'totalHeight');
+          }
+    
+          this.$('.ember-list-container').css({
+            height: height
+          });
+        }
+      }
+    });
+  });
 define("list-view/main",
-  ["list-view/reusable_list_item_view","list-view/virtual_list_view","list-view/list_item_view","list-view/helper","list-view/list_view","list-view/list_view_helper"],
+  ["./reusable-list-item-view","./virtual-list-view","./list-item-view","./list-view","./list-view-helper","./helper"],
   function(__dependency1__, __dependency2__, __dependency3__, __dependency4__, __dependency5__, __dependency6__) {
     "use strict";
     var ReusableListItemView = __dependency1__["default"];
@@ -1445,12 +1484,14 @@ define("list-view/main",
 
     var ListItemView = __dependency3__["default"];
 
-    var EmberList = __dependency4__["default"];
+    var ListView = __dependency4__["default"];
 
-    var ListView = __dependency5__["default"];
+    var ListViewHelper = __dependency5__["default"];
 
-    var ListViewHelper = __dependency6__["default"];
+    var registerListViewHelpers = __dependency6__.registerListViewHelpers;
 
+    
+    
     
     Ember.ReusableListItemView = ReusableListItemView;
     Ember.VirtualListView      = VirtualListView;
@@ -1458,10 +1499,10 @@ define("list-view/main",
     Ember.ListView             = ListView;
     Ember.ListViewHelper       = ListViewHelper;
     
-    Ember.Handlebars.registerHelper('ember-list', EmberList);
+    registerListViewHelpers();
   });
-define("list-view/reusable_list_item_view",
-  ["list-view/list_item_view_mixin","exports"],
+define("list-view/reusable-list-item-view",
+  ["./list-item-view-mixin","exports"],
   function(__dependency1__, __exports__) {
     "use strict";
     var ListItemViewMixin = __dependency1__["default"];
@@ -1470,20 +1511,24 @@ define("list-view/reusable_list_item_view",
     var get = Ember.get, set = Ember.set;
     
     __exports__["default"] = Ember.View.extend(ListItemViewMixin, {
-      init: function(){
+      prepareForReuse: Ember.K,
+    
+      init: function () {
         this._super();
         var context = Ember.ObjectProxy.create();
         this.set('context', context);
         this._proxyContext = context;
       },
-      isVisible: Ember.computed('context.content', function(){
+    
+      isVisible: Ember.computed('context.content', function () {
         return !!this.get('context.content');
       }),
-      updateContext: function(newContext){
-        var context = get(this._proxyContext, 'content'), state;
+    
+      updateContext: function (newContext) {
+        var context = get(this._proxyContext, 'content');
     
         // Support old and new Ember versions
-        state = this._state || this.state;
+        var state = this._state || this.state;
     
         if (context !== newContext) {
           if (state === 'inDOM') {
@@ -1496,15 +1541,14 @@ define("list-view/reusable_list_item_view",
             set(this, 'controller', newContext);
           }
         }
-      },
-      prepareForReuse: Ember.K
+      }
     });
   });
-define("list-view/virtual_list_scroller_events",
+define("list-view/virtual-list-scroller-events",
   ["exports"],
   function(__exports__) {
     "use strict";
-    // jshint validthis: true
+    
     var fieldRegex = /input|textarea|select/i,
       hasTouch = ('ontouchstart' in window) || window.DocumentTouch && document instanceof window.DocumentTouch,
       handleStart, handleMove, handleEnd, handleCancel,
@@ -1640,21 +1684,20 @@ define("list-view/virtual_list_scroller_events",
       var point = e.changedTouches[0],
         target = point.target,
         ev;
-      if (target && fieldRegex.test(target.tagName)) {
+      if (target && !fieldRegex.test(target.tagName)) {
         ev = document.createEvent('MouseEvents');
         ev.initMouseEvent('click', true, true, e.view, 1, point.screenX, point.screenY, point.clientX, point.clientY, e.ctrlKey, e.altKey, e.shiftKey, e.metaKey, 0, null);
         return target.dispatchEvent(ev);
       }
     }
   });
-define("list-view/virtual_list_view",
-  ["list-view/list_view_mixin","list-view/list_view_helper","list-view/virtual_list_scroller_events","exports"],
+define("list-view/virtual-list-view",
+  ["./list-view-mixin","./list-view-helper","./virtual-list-scroller-events","exports"],
   function(__dependency1__, __dependency2__, __dependency3__, __exports__) {
     "use strict";
     /*
       global Scroller
     */
-    
     var ListViewMixin = __dependency1__["default"];
 
     var ListViewHelper = __dependency2__["default"];
@@ -1662,7 +1705,7 @@ define("list-view/virtual_list_view",
     var VirtualListScrollerEvents = __dependency3__["default"];
 
     
-    var max = Math.max, get = Ember.get, set = Ember.set;
+    var get = Ember.get;
     
     function updateScrollerDimensions(target) {
       var width, height, totalHeight;
@@ -1700,11 +1743,10 @@ define("list-view/virtual_list_view",
       applyTransform: ListViewHelper.apply3DTransform,
     
       setupScroller: function(){
-        var view, y;
+        var view = this;
     
-        view = this;
-    
-        view.scroller = new Scroller(function(left, top, zoom) {
+        /* global Scroller */
+        view.scroller = new Scroller(function(left, top/*, zoom*/) {
           // Support old and new Ember versions
           var state = view._state || view.state;
     
@@ -1743,7 +1785,7 @@ define("list-view/virtual_list_view",
     
         this.pullToRefreshView.on('didInsertElement', function() {
           Ember.run.scheduleOnce('afterRender', this, function(){
-            view.applyTransform(get(this, 'element'), 0, -1 * view.pullToRefreshViewHeight);
+            view.applyTransform(this.element, 0, -1 * view.pullToRefreshViewHeight);
           });
         });
       },

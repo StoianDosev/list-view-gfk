@@ -30,5 +30,6 @@
   "white": false,
   "eqnull": true,
   "esnext": true,
-  "unused": false
+  "unused": false,
+  "validthis": true
 }
